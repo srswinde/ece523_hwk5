@@ -4,7 +4,7 @@ from sklearn.datasets.samples_generator import make_blobs
 from sklearn.neighbors import KNeighborsClassifier
 import numpy as np
 import random
-
+import copy
 
 class TrainData:
     """A convenient way to grab data without saving them to disk."""
@@ -39,11 +39,11 @@ class TrainData:
             self.cache[key] = data[:]
 
 
-        return data
+        return copy.deepcopy( data )
 
     def __iter__(self):
         for ii in range( len( self.urls ) ):
-            yield self.__getitem__(ii)
+            yield copy.deepcopy( self.__getitem__(ii) )
 
 
     def __call__( self ):
@@ -53,8 +53,8 @@ class TrainData:
 
     def xy( self, key ):
         data = self.__getitem__( key )
-        x, y = data[:, :-1], data[:, -1]
-        return x, y
+        x, y = data[:, :-1][:], data[:, -1][:]
+        return copy.deepcopy( x ), copy.deepcopy( y )
 
     def __len__(self):
         return len(self.urls)
@@ -68,22 +68,31 @@ class TestData( TrainData ):
 
 
 class main:
+
     def __init__( self, percent_labeled=0.1 ):
         self.pu = 1 - percent_labeled
 
-    def __call__( self ):
+
+    def getdata( self, key ):
+        self.t = TrainData()
+        return self.t.xy(key)
+
+    def __call__( self, data=0 ):
         n_features = 2
-        x_true, y_true = make_blobs(
-            n_samples=1000,
-            centers=2,
-            n_features=n_features,
-            random_state=0,
-            cluster_std=1.1)
+        # x_true, y_true = make_blobs(
+            # n_samples=1000,
+            # centers=2,
+            # n_features=n_features,
+            # random_state=0,
+            # cluster_std=1.1)
+
+
+        x_true, y_true = self.getdata( data )
 
         # make experimental partially labeled data
         x_exp, y_exp = x_true[:], y_true[:]
 
-        # randomly take away 80% of the labels
+        # randomly take away self.pu % of the labels
         unlabeled = random.sample(range(y_exp.size), int(self.pu*y_exp.size))
         y_exp[ unlabeled] = -1
 
@@ -95,25 +104,25 @@ class main:
                 title="Run #1", xlabel="feature1", ylabel="feature2") )
         pgood = 0
         counter = 2
+        n_classes = int( np.max(y_exp+1) )
         for counter in range(2, 9):
 
             pgood = y_exp[y_exp != -1].size/y_exp.size
             print( pgood )
-            cls = KNeighborsClassifier( n_neighbors=10 )
-            cls.fit( x_exp[y_exp != -1], y_exp[y_exp != -1] )
-            prd = np.zeros(x_exp.shape, dtype=int)
+            clsfer = KNeighborsClassifier( n_neighbors=2 )
+            clsfer.fit( x_exp[y_exp != -1], y_exp[y_exp != -1] )
+            prd = np.zeros((x_exp.shape[0], n_classes ), dtype=int)
             prd[:] = -2  # -2 has already been classified
 
             # if all datapoints have been classified
             if not np.any(y_exp == -1):
                 break
-            prd[y_exp == -1] = cls.predict_proba( x_exp[y_exp == -1] )
+            prd[y_exp == -1] = clsfer.predict_proba( x_exp[y_exp == -1] )
 
 
-            cls0 = np.where( prd[:, 0] > 0.95 )
-            cls1 = np.where( prd[:, 1] > 0.95 )
-            y_exp[cls0] = 0
-            y_exp[cls1] = 1
+            for cls_i in range(n_classes):
+                classified = np.where( prd[:, cls_i] > 0.99 )
+                y_exp[classified] = cls_i
 
             try:
                 self.plot(
@@ -132,12 +141,11 @@ class main:
         self.x_true, self.y_true = x_true, y_true
         self.x_exp, self.y_exp = x_exp, y_exp
         self.prd = prd
-        self.cls = cls
 
 
 
     def plot(self, X, y, sp=None, **kwargs):
-
+        return
         if sp is None:
             pltr = plt
         else:
